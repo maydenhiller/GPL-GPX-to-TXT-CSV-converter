@@ -4,12 +4,11 @@ import xml.etree.ElementTree as ET
 import io
 import zipfile
 import struct
-import binascii
 
 st.set_page_config(page_title="GPX/GPL Combiner", layout="centered")
 
-st.title("📍 GPX / GPL Combiner (Debug Mode)")
-st.write("Upload `.gpx` or `.gpl` files — will parse XML or binary GPL, and show raw binary debug for GPLs.")
+st.title("📍 GPX / GPL Combiner")
+st.write("Upload `.gpx` or `.gpl` files (XML or binary) and combine them into `.csv` and `.txt` with reduced coordinates.")
 
 uploaded_files = st.file_uploader(
     "Upload GPX or GPL files",
@@ -17,47 +16,23 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True
 )
 
-def debug_binary_gpl(file_bytes, filename):
-    """
-    Show first few records in raw hex and int/double interpretations.
-    """
-    st.subheader(f"Binary GPL Debug: {filename}")
-    header_size = 256
-    data = file_bytes[header_size:]
-    record_size = 8  # initial guess: 4 bytes lat + 4 bytes lon
-    for i in range(0, min(len(data), record_size*5), record_size):
-        chunk = data[i:i+record_size]
-        hex_str = binascii.hexlify(chunk).decode("ascii")
-        try:
-            ints = struct.unpack("<ii", chunk)
-        except struct.error:
-            ints = ("?", "?")
-        try:
-            floats = struct.unpack("<ff", chunk)
-        except struct.error:
-            floats = ("?", "?")
-        try:
-            doubles = struct.unpack("<dd", chunk + b"\x00"*(16-len(chunk))) if len(chunk) >= 16 else ("?", "?")
-        except struct.error:
-            doubles = ("?", "?")
-        st.write(f"Record {i//record_size+1}: HEX={hex_str} int32={ints} float32={floats} float64={doubles}")
-
 def parse_binary_gpl(file_bytes, filename):
     """
-    Parse binary GPL with current guess: int32 little-endian scaled by 1e6.
+    Parse binary GPL assuming 8-byte little-endian doubles for lat/lon.
     """
     coords = []
-    header_size = 256
-    data = file_bytes[header_size:]
-    record_size = 8
-    for i in range(0, len(data), record_size):
-        chunk = data[i:i+record_size]
-        if len(chunk) < record_size:
-            break
-        lat_raw, lon_raw = struct.unpack("<ii", chunk)
-        lat = lat_raw / 1e6
-        lon = lon_raw / 1e6
-        coords.append((lat, lon))
+    try:
+        header_size = 256
+        data = file_bytes[header_size:]
+        record_size = 16  # 8 bytes lat + 8 bytes lon
+        for i in range(0, len(data), record_size):
+            chunk = data[i:i+record_size]
+            if len(chunk) < record_size:
+                break
+            lat, lon = struct.unpack("<dd", chunk)
+            coords.append((lat, lon))
+    except Exception as e:
+        st.error(f"{filename}: Error parsing binary GPL — {e}")
     return coords
 
 def parse_gpx_or_gpl(file_bytes, filename):
@@ -68,8 +43,7 @@ def parse_gpx_or_gpl(file_bytes, filename):
         text = ""
 
     if not text.startswith("<"):
-        st.info(f"{filename}: Detected binary GPL — decoding.")
-        debug_binary_gpl(file_bytes, filename)
+        st.info(f"{filename}: Detected binary GPL — decoding as doubles.")
         return parse_binary_gpl(file_bytes, filename)
 
     try:
