@@ -80,7 +80,7 @@ def dedupe_consecutive(coords: List[Tuple[float, float]]) -> List[Tuple[float, f
 # Parsing: XML GPX/GPL
 # --------------------------
 
-def parse_gpx_or_gpl_xml(file_bytes: bytes, filename: str) -> List[Tuple[float, float]]]:
+def parse_gpx_or_gpl_xml(file_bytes: bytes, filename: str) -> List[Tuple[float, float]]:
     coords = []
     # Decode text safely, stripping BOM/whitespace
     text = file_bytes.decode("utf-8-sig", errors="ignore").lstrip()
