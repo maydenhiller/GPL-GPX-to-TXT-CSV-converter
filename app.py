@@ -4,11 +4,12 @@ import xml.etree.ElementTree as ET
 import io
 import zipfile
 import struct
+import binascii
 
-st.set_page_config(page_title="GPX/GPL Combiner", layout="centered")
+st.set_page_config(page_title="GPX/GPL Deep Debug", layout="centered")
 
-st.title("📍 GPX / GPL Combiner")
-st.write("Upload `.gpx` or `.gpl` files (XML or binary) and combine them into `.csv` and `.txt` with reduced coordinates.")
+st.title("📍 GPX / GPL Combiner — Deep Binary Debug")
+st.write("Upload `.gpx` or `.gpl` files. For binary GPLs, this will dump raw bytes and multiple interpretations so we can reverse-engineer the format.")
 
 uploaded_files = st.file_uploader(
     "Upload GPX or GPL files",
@@ -16,23 +17,52 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True
 )
 
-def parse_binary_gpl(file_bytes, filename):
+def deep_debug_binary_gpl(file_bytes, filename):
     """
-    Parse binary GPL assuming 8-byte little-endian doubles for lat/lon.
+    Dump first few records in multiple interpretations to identify correct format.
+    """
+    st.subheader(f"Binary GPL Deep Debug: {filename}")
+    header_size = 256
+    data = file_bytes[header_size:]
+    # Try record sizes from 8 to 32 bytes
+    for rec_size in [8, 12, 16, 20, 24, 28, 32]:
+        st.write(f"--- Trying record size {rec_size} bytes ---")
+        for i in range(0, min(len(data), rec_size*5), rec_size):
+            chunk = data[i:i+rec_size]
+            hex_str = binascii.hexlify(chunk).decode("ascii")
+            out = {"HEX": hex_str}
+            # Interpret as int32 pairs
+            if len(chunk) >= 8:
+                try:
+                    out["int32_pair"] = struct.unpack("<ii", chunk[:8])
+                except: pass
+            # Interpret as float32 pairs
+            if len(chunk) >= 8:
+                try:
+                    out["float32_pair"] = struct.unpack("<ff", chunk[:8])
+                except: pass
+            # Interpret as double pair
+            if len(chunk) >= 16:
+                try:
+                    out["float64_pair"] = struct.unpack("<dd", chunk[:16])
+                except: pass
+            st.write(f"Rec {i//rec_size+1}: {out}")
+
+def parse_binary_gpl_guess(file_bytes, filename):
+    """
+    Placeholder parser — will be replaced once we identify correct format.
+    Currently assumes 8-byte doubles for lat/lon.
     """
     coords = []
-    try:
-        header_size = 256
-        data = file_bytes[header_size:]
-        record_size = 16  # 8 bytes lat + 8 bytes lon
-        for i in range(0, len(data), record_size):
-            chunk = data[i:i+record_size]
-            if len(chunk) < record_size:
-                break
-            lat, lon = struct.unpack("<dd", chunk)
-            coords.append((lat, lon))
-    except Exception as e:
-        st.error(f"{filename}: Error parsing binary GPL — {e}")
+    header_size = 256
+    data = file_bytes[header_size:]
+    record_size = 16
+    for i in range(0, len(data), record_size):
+        chunk = data[i:i+record_size]
+        if len(chunk) < record_size:
+            break
+        lat, lon = struct.unpack("<dd", chunk)
+        coords.append((lat, lon))
     return coords
 
 def parse_gpx_or_gpl(file_bytes, filename):
@@ -43,8 +73,9 @@ def parse_gpx_or_gpl(file_bytes, filename):
         text = ""
 
     if not text.startswith("<"):
-        st.info(f"{filename}: Detected binary GPL — decoding as doubles.")
-        return parse_binary_gpl(file_bytes, filename)
+        st.info(f"{filename}: Detected binary GPL — running deep debug.")
+        deep_debug_binary_gpl(file_bytes, filename)
+        return parse_binary_gpl_guess(file_bytes, filename)
 
     try:
         tree = ET.ElementTree(ET.fromstring(text))
