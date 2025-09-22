@@ -15,17 +15,23 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True
 )
 
-def parse_gpx_or_gpl(file_bytes):
+def parse_gpx_or_gpl(file_bytes, filename):
     """
     Parses GPX or GPL XML and returns a list of (lat, lon) tuples.
-    Handles GPX <trkpt>, <rtept> and GPL <point> or nested lat/lon tags.
+    Skips binary GPLs with a warning.
     """
     coords = []
     try:
-        tree = ET.parse(io.BytesIO(file_bytes))
+        # Try to decode as UTF-8 text and strip BOM/whitespace
+        text = file_bytes.decode("utf-8-sig", errors="ignore").lstrip()
+        if not text.startswith("<"):
+            st.warning(f"{filename}: Not XML — possibly a binary GPL. Skipping.")
+            return coords
+
+        tree = ET.ElementTree(ET.fromstring(text))
         root = tree.getroot()
 
-        # GPX common tags
+        # GPX tags
         for tag in [".//{*}trkpt", ".//{*}rtept"]:
             for pt in root.findall(tag):
                 lat = pt.attrib.get("lat")
@@ -33,7 +39,7 @@ def parse_gpx_or_gpl(file_bytes):
                 if lat and lon:
                     coords.append((float(lat), float(lon)))
 
-        # GPL point tags (with or without namespace)
+        # GPL point tags
         for tag in [".//point", ".//{*}point"]:
             for pt in root.findall(tag):
                 lat = pt.attrib.get("lat")
@@ -41,7 +47,7 @@ def parse_gpx_or_gpl(file_bytes):
                 if lat and lon:
                     coords.append((float(lat), float(lon)))
 
-        # GPL nested lat/lon elements
+        # Nested lat/lon elements
         if not coords:
             for pt in root.findall(".//point"):
                 lat_el = pt.find("lat")
@@ -50,7 +56,7 @@ def parse_gpx_or_gpl(file_bytes):
                     coords.append((float(lat_el.text), float(lon_el.text)))
 
     except ET.ParseError as e:
-        st.error(f"Error parsing file: {e}")
+        st.error(f"{filename}: Error parsing XML — {e}")
     return coords
 
 def reduce_coords(coords):
@@ -68,7 +74,7 @@ if uploaded_files:
 
     for file in uploaded_files:
         file_bytes = file.read()
-        coords = parse_gpx_or_gpl(file_bytes)
+        coords = parse_gpx_or_gpl(file_bytes, file.name)
         reduced = reduce_coords(coords)
 
         log_info.append(f"{file.name}: {len(coords)} → {len(reduced)} points")
