@@ -6,7 +6,7 @@ import streamlit as st
 import xml.etree.ElementTree as ET
 import zipfile
 
-st.set_page_config(page_title="GPX/GPL Combiner", layout="centered")
+st.set_page_config(page_title="GPX/GPL Combiner (U.S. Filter)", layout="centered")
 
 st.title("📍 GPX / GPL Combiner (U.S. Filter)")
 st.write(
@@ -145,8 +145,9 @@ if uploaded_files:
         all_lines.append(reduced)
         logs.append(f"{file.name}: {len(coords)} → {len(reduced)} points")
 
-    # TXT output
+    # TXT output with headings and markers
     txt_io = io.StringIO()
+    txt_io.write("Latitude,Longitude\n")
     for line in all_lines:
         txt_io.write("BEGIN LINE\n")
         for lat, lon in line:
@@ -154,11 +155,13 @@ if uploaded_files:
         txt_io.write("END\n")
     txt_bytes = txt_io.getvalue().encode("utf-8")
 
-    # CSV output
+    # CSV output with headings and markers
     csv_rows = []
     for line in all_lines:
+        csv_rows.append({"Latitude": "BEGIN LINE", "Longitude": ""})
         for lat, lon in line:
-            csv_rows.append({"lat": lat, "lon": lon})
+            csv_rows.append({"Latitude": f"{lat:.6f}", "Longitude": f"{lon:.6f}"})
+        csv_rows.append({"Latitude": "END", "Longitude": ""})
     csv_df = pd.DataFrame(csv_rows)
     csv_bytes = csv_df.to_csv(index=False).encode("utf-8")
 
