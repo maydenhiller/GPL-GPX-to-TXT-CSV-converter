@@ -157,14 +157,26 @@ if uploaded_files:
         txt_io.write("END\n")
     txt_bytes = txt_io.getvalue().encode("utf-8")
 
-    # CSV output: just coordinates, blank row between sets
-    csv_io = io.StringIO()
+    # CSV output: coordinates + Column C "None" + Column D "Blue", blank row between sets
+    csv_rows = []
     for idx, line in enumerate(all_lines):
         for lat, lon in line:
-            csv_io.write(f"{lat:.6f},{lon:.6f}\n")
+            csv_rows.append({
+                "Latitude": f"{lat:.6f}",
+                "Longitude": f"{lon:.6f}",
+                "ColumnC": "None",
+                "ColumnD": "Blue"
+            })
         if idx < len(all_lines) - 1:
-            csv_io.write("\n")  # blank row between sets
-    csv_bytes = csv_io.getvalue().encode("utf-8")
+            # Blank separator row with all empty cells
+            csv_rows.append({
+                "Latitude": "",
+                "Longitude": "",
+                "ColumnC": "",
+                "ColumnD": ""
+            })
+    csv_df = pd.DataFrame(csv_rows)
+    csv_bytes = csv_df.to_csv(index=False).encode("utf-8")
 
     # Zip both
     zip_buf = io.BytesIO()
