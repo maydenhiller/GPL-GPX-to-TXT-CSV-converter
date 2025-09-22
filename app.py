@@ -8,8 +8,11 @@ import zipfile
 
 st.set_page_config(page_title="GPX/GPL Combiner", layout="centered")
 
-st.title("📍 GPX / GPL Combiner")
-st.write("Upload `.gpx` or `.gpl` files (XML or binary) and combine them into `.csv` and `.txt` with reduced coordinates.")
+st.title("📍 GPX / GPL Combiner (U.S. Filter)")
+st.write(
+    "Upload `.gpx` or `.gpl` files (XML or binary). "
+    "Binary GPLs are decoded with a strict U.S. bounding-box filter to remove junk points."
+)
 
 uploaded_files = st.file_uploader(
     "Upload GPX or GPL files",
@@ -21,10 +24,12 @@ uploaded_files = st.file_uploader(
 # Helpers
 # --------------------------
 
-def is_valid_lat_lon(lat: float, lon: float) -> bool:
-    return (-90.0 <= lat <= 90.0) and (-180.0 <= lon <= 180.0)
+def is_valid_us_lat_lon(lat: float, lon: float) -> bool:
+    """Check if lat/lon is inside the continental U.S. bounding box."""
+    return (24.5 <= lat <= 49.5) and (-125.0 <= lon <= -66.5)
 
 def dedupe_consecutive(coords: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+    """Remove exact consecutive duplicates."""
     if not coords:
         return coords
     out = [coords[0]]
@@ -34,6 +39,7 @@ def dedupe_consecutive(coords: List[Tuple[float, float]]) -> List[Tuple[float, f
     return out
 
 def reduce_coords(coords: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+    """Keep first, last, and every other coordinate in between."""
     if len(coords) <= 2:
         return coords
     return [coords[0]] + coords[1:-1:2] + [coords[-1]]
@@ -59,7 +65,7 @@ def parse_gpx_or_gpl_xml(file_bytes: bytes, filename: str) -> List[Tuple[float, 
                 lon = pt.attrib.get("lon")
                 if lat and lon:
                     latf, lonf = float(lat), float(lon)
-                    if is_valid_lat_lon(latf, lonf):
+                    if is_valid_us_lat_lon(latf, lonf):
                         coords.append((latf, lonf))
         for tag in [".//point", ".//{*}point"]:
             for pt in root.findall(tag):
@@ -67,41 +73,46 @@ def parse_gpx_or_gpl_xml(file_bytes: bytes, filename: str) -> List[Tuple[float, 
                 lon = pt.attrib.get("lon")
                 if lat and lon:
                     latf, lonf = float(lat), float(lon)
-                    if is_valid_lat_lon(latf, lonf):
+                    if is_valid_us_lat_lon(latf, lonf):
                         coords.append((latf, lonf))
                 else:
                     lat_el = pt.find("lat")
                     lon_el = pt.find("lon")
                     if lat_el is not None and lon_el is not None:
                         latf, lonf = float(lat_el.text), float(lon_el.text)
-                        if is_valid_lat_lon(latf, lonf):
+                        if is_valid_us_lat_lon(latf, lonf):
                             coords.append((latf, lonf))
     except ET.ParseError as e:
         st.error(f"{filename}: XML parse error — {e}")
     return coords
 
 # --------------------------
-# Parsing: Binary GPL (sliding window)
+# Parsing: Binary GPL (U.S. filter)
 # --------------------------
 
-def parse_gpl_binary(file_bytes: bytes, filename: str) -> List[Tuple[float, float]]:
+def parse_gpl_binary_us(file_bytes: bytes, filename: str) -> List[Tuple[float, float]]:
     coords = []
     header_size = 256
     data = file_bytes[header_size:]
-    stride = 32  # observed record size
+    stride = 32  # record size
+    prev_lat, prev_lon = None, None
+
     for i in range(0, len(data), stride):
         chunk = data[i:i+stride]
         if len(chunk) < 16:
             continue
-        # Try offsets 0, 8, 16
-        for off in (0, 8, 16):
-            if off + 16 <= len(chunk):
-                try:
-                    lat, lon = struct.unpack("<dd", chunk[off:off+16])
-                    if is_valid_lat_lon(lat, lon):
-                        coords.append((lat, lon))
-                except struct.error:
-                    continue
+        try:
+            lat, lon = struct.unpack("<dd", chunk[:16])
+            if is_valid_us_lat_lon(lat, lon):
+                # Reject huge jumps (> 2°) from previous kept point
+                if prev_lat is not None:
+                    if abs(lat - prev_lat) > 2 or abs(lon - prev_lon) > 2:
+                        continue
+                coords.append((lat, lon))
+                prev_lat, prev_lon = lat, lon
+        except struct.error:
+            continue
+
     coords = dedupe_consecutive(coords)
     return coords
 
@@ -117,8 +128,8 @@ def parse_any(file_bytes: bytes, filename: str) -> List[Tuple[float, float]]:
     if text.startswith("<"):
         return parse_gpx_or_gpl_xml(file_bytes, filename)
     else:
-        st.info(f"{filename}: Detected binary GPL — decoding with sliding window.")
-        return parse_gpl_binary(file_bytes, filename)
+        st.info(f"{filename}: Detected binary GPL — decoding with U.S. bounding-box filter.")
+        return parse_gpl_binary_us(file_bytes, filename)
 
 # --------------------------
 # Main flow
