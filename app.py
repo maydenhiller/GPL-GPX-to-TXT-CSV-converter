@@ -3,11 +3,12 @@ import pandas as pd
 import xml.etree.ElementTree as ET
 import io
 import zipfile
+import struct
 
 st.set_page_config(page_title="GPX/GPL Combiner", layout="centered")
 
 st.title("📍 GPX / GPL Combiner")
-st.write("Upload multiple `.gpx` or `.gpl` files and combine them into `.csv` and `.txt` with reduced coordinates.")
+st.write("Upload multiple `.gpx` or `.gpl` files (XML or binary) and combine them into `.csv` and `.txt` with reduced coordinates.")
 
 uploaded_files = st.file_uploader(
     "Upload GPX or GPL files",
@@ -15,19 +16,49 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True
 )
 
-def parse_gpx_or_gpl(file_bytes, filename):
+def parse_binary_gpl(file_bytes, filename):
     """
-    Parses GPX or GPL XML and returns a list of (lat, lon) tuples.
-    Skips binary GPLs with a warning.
+    Parse binary DeLorme GPL format into a list of (lat, lon) tuples.
+    This assumes the common format: 4-byte little-endian signed ints for lat/lon * 1e6.
     """
     coords = []
     try:
-        # Try to decode as UTF-8 text and strip BOM/whitespace
-        text = file_bytes.decode("utf-8-sig", errors="ignore").lstrip()
-        if not text.startswith("<"):
-            st.warning(f"{filename}: Not XML — possibly a binary GPL. Skipping.")
-            return coords
+        # Skip header (first 256 bytes is common in DeLorme GPL)
+        header_size = 256
+        data = file_bytes[header_size:]
+        record_size = 8  # 4 bytes lat + 4 bytes lon
 
+        for i in range(0, len(data), record_size):
+            chunk = data[i:i+record_size]
+            if len(chunk) < record_size:
+                break
+            lat_raw, lon_raw = struct.unpack("<ii", chunk)
+            lat = lat_raw / 1e6
+            lon = lon_raw / 1e6
+            coords.append((lat, lon))
+    except Exception as e:
+        st.error(f"{filename}: Error parsing binary GPL — {e}")
+    return coords
+
+def parse_gpx_or_gpl(file_bytes, filename):
+    """
+    Parses GPX or GPL XML and returns a list of (lat, lon) tuples.
+    Detects binary GPL and routes to binary parser.
+    """
+    coords = []
+    # Try to decode as text
+    try:
+        text = file_bytes.decode("utf-8-sig", errors="ignore").lstrip()
+    except UnicodeDecodeError:
+        text = ""
+
+    # If not starting with '<', treat as binary GPL
+    if not text.startswith("<"):
+        st.info(f"{filename}: Detected binary GPL — decoding.")
+        return parse_binary_gpl(file_bytes, filename)
+
+    # Otherwise, parse as XML
+    try:
         tree = ET.ElementTree(ET.fromstring(text))
         root = tree.getroot()
 
