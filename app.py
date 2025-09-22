@@ -145,7 +145,7 @@ if uploaded_files:
         all_lines.append(reduced)
         logs.append(f"{file.name}: {len(coords)} → {len(reduced)} points")
 
-    # TXT output with headings and markers
+    # TXT output (unchanged from last version)
     txt_io = io.StringIO()
     txt_io.write("Latitude,Longitude\n")
     for line in all_lines:
@@ -155,28 +155,27 @@ if uploaded_files:
         txt_io.write("END\n")
     txt_bytes = txt_io.getvalue().encode("utf-8")
 
-    # CSV output with headings and markers
-    csv_rows = []
-    for line in all_lines:
-        csv_rows.append({"Latitude": "BEGIN LINE", "Longitude": ""})
+    # CSV output: just coordinates, blank row between sets
+    csv_io = io.StringIO()
+    for idx, line in enumerate(all_lines):
         for lat, lon in line:
-            csv_rows.append({"Latitude": f"{lat:.6f}", "Longitude": f"{lon:.6f}"})
-        csv_rows.append({"Latitude": "END", "Longitude": ""})
-    csv_df = pd.DataFrame(csv_rows)
-    csv_bytes = csv_df.to_csv(index=False).encode("utf-8")
+            csv_io.write(f"{lat:.6f},{lon:.6f}\n")
+        if idx < len(all_lines) - 1:
+            csv_io.write("\n")  # blank row between sets
+    csv_bytes = csv_io.getvalue().encode("utf-8")
 
     # Zip both
     zip_buf = io.BytesIO()
     with zipfile.ZipFile(zip_buf, "w") as zf:
-        zf.writestr("combined.txt", txt_bytes)
-        zf.writestr("combined.csv", csv_bytes)
+        zf.writestr("Combined Access Files.txt", txt_bytes)
+        zf.writestr("Combined Access Files.csv", csv_bytes)
     zip_buf.seek(0)
 
     st.success("✅ Files processed successfully!")
     st.download_button(
-        "⬇️ Download combined.zip",
+        "⬇️ Download Combined Access Files.zip",
         data=zip_buf,
-        file_name="combined.zip",
+        file_name="Combined Access Files.zip",
         mime="application/zip"
     )
 
