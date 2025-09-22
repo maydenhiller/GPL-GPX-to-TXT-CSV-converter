@@ -6,9 +6,11 @@ import streamlit as st
 import xml.etree.ElementTree as ET
 import zipfile
 
-st.set_page_config(page_title="GPX/GPL Combiner (U.S. Filter)", layout="centered")
+# App name in browser tab
+st.set_page_config(page_title="GPL-GPX-to-TXT-CSV-converter", layout="centered")
 
-st.title("📍 GPX / GPL Combiner (U.S. Filter)")
+# App title in page
+st.title("GPL-GPX-to-TXT-CSV-converter")
 st.write(
     "Upload `.gpx` or `.gpl` files (XML or binary). "
     "Binary GPLs are decoded with a strict U.S. bounding-box filter to remove junk points."
@@ -145,7 +147,7 @@ if uploaded_files:
         all_lines.append(reduced)
         logs.append(f"{file.name}: {len(coords)} → {len(reduced)} points")
 
-    # TXT output (unchanged from last version)
+    # TXT output: headings + BEGIN/END markers
     txt_io = io.StringIO()
     txt_io.write("Latitude,Longitude\n")
     for line in all_lines:
