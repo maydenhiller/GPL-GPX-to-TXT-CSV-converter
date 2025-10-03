@@ -76,38 +76,19 @@ def parse_gpl_binary_adaptive(file_bytes: bytes, filename: str) -> List[Tuple[fl
     header_size = 256
     data = file_bytes[header_size:]
     stride = 32
-    prev_lat, prev_lon = None, None
 
     for i in range(0, len(data), stride):
         chunk = data[i:i+stride]
         if len(chunk) < 16:
             continue
 
-        candidates = []
         for offset in [0, 8, 16]:
             try:
                 lat, lon = struct.unpack("<dd", chunk[offset:offset+16])
                 if is_valid_us_lat_lon(lat, lon):
-                    candidates.append((offset, lat, lon))
+                    coords.append((lat, lon))
             except struct.error:
                 continue
-
-        chosen = None
-        for offset in [16, 8, 0]:
-            for cand in candidates:
-                if cand[0] == offset:
-                    lat, lon = cand[1], cand[2]
-                    if prev_lat is not None:
-                        if abs(lat - prev_lat) > 2 or abs(lon - prev_lon) > 2:
-                            continue
-                    chosen = (lat, lon)
-                    prev_lat, prev_lon = lat, lon
-                    break
-            if chosen:
-                break
-
-        if chosen:
-            coords.append(chosen)
 
     return dedupe_consecutive(coords)
 
