@@ -122,21 +122,22 @@ if uploaded_files:
         txt_io.write("END\n")
     txt_bytes = txt_io.getvalue().encode("utf-8")
 
+    # CSV with renamed columns
     csv_rows = []
     for idx, line in enumerate(all_lines):
         for lat, lon in line:
             csv_rows.append({
                 "Latitude": f"{lat:.6f}",
                 "Longitude": f"{lon:.6f}",
-                "ColumnC": "None",
-                "ColumnD": "Blue"
+                "icon": "None",
+                "LineStringColor": "Blue"
             })
         if idx < len(all_lines) - 1:
             csv_rows.append({
                 "Latitude": "",
                 "Longitude": "",
-                "ColumnC": "",
-                "ColumnD": ""
+                "icon": "",
+                "LineStringColor": ""
             })
     csv_df = pd.DataFrame(csv_rows)
     csv_bytes = csv_df.to_csv(index=False).encode("utf-8")
